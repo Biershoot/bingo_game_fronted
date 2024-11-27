@@ -1,10 +1,14 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import Login from './components/Login';
+import Lobby from './components/Lobby';
 import Notifications from './components/Notifications';
 import GameControls from './components/GameControls';
 import BingoBoard from './components/BingoBoard';
 import { connectWebSocket, disconnectWebSocket } from './WebSocketClient';
 
 const App = () => {
+  const [player, setPlayer] = useState(null); // Player login state
+  const [gameId, setGameId] = useState(null); // Active game ID
   const [card, setCard] = useState([
     [5, 18, 42, 60, 75],
     [1, 19, 35, 55, 70],
@@ -13,10 +17,9 @@ const App = () => {
     [4, 16, 38, 53, 66],
   ]);
   const [markedNumbers, setMarkedNumbers] = useState(new Set()); // Numbers marked by the player
-  const [notifications, setNotifications] = useState([]);
-  const [gameId, setGameId] = useState(null); // ID of the active game
-  const [playerId, setPlayerId] = useState(1); // Example player ID (adjust as needed)
+  const [notifications, setNotifications] = useState([]); // Notifications for the user
 
+  // Handlers for WebSocket events
   const handleBallDrawn = (message) => {
     setNotifications((prev) => [...prev, `Balota extraída: ${message}`]);
     setMarkedNumbers((prev) => new Set(prev).add(parseInt(message)));
@@ -26,6 +29,7 @@ const App = () => {
     setNotifications((prev) => [...prev, `Notificación: ${message}`]);
   };
 
+  // Start a new game
   const startGame = async () => {
     try {
       const response = await fetch('http://localhost:8080/game/start', { method: 'POST' });
@@ -41,22 +45,27 @@ const App = () => {
     }
   };
 
-  const endGame = async () => {
+  // Join the game lobby
+  const joinGame = async () => {
     try {
-      const response = await fetch(`http://localhost:8080/game/${gameId}/end`, { method: 'POST' });
+      const response = await fetch(`http://localhost:8080/game/${gameId}/join?playerId=${player}`, {
+        method: 'POST',
+      });
       if (response.ok) {
-        setNotifications((prev) => [...prev, 'Juego finalizado.']);
+        const result = await response.text();
+        setNotifications((prev) => [...prev, result]);
       } else {
-        console.error('Error al finalizar el juego:', response.statusText);
+        console.error('Error al unirse al juego:', response.statusText);
       }
     } catch (error) {
-      console.error('Error al finalizar el juego:', error);
+      console.error('Error al unirse al juego:', error);
     }
   };
 
+  // Validate Bingo
   const validateBingo = () => {
     const isBingo = card.some((row) =>
-        row.every((number) => markedNumbers.has(number) || number === 0) // "0" is the free space
+        row.every((number) => markedNumbers.has(number) || number === 0)
     );
 
     if (isBingo) {
@@ -67,11 +76,12 @@ const App = () => {
     }
   };
 
+  // Declare Bingo to the backend
   const declareBingo = async () => {
     try {
       const response = await fetch(`http://localhost:8080/game/${gameId}/bingo`, {
         method: 'POST',
-        body: JSON.stringify({ playerId }),
+        body: JSON.stringify({ player }),
         headers: { 'Content-Type': 'application/json' },
       });
       if (response.ok) {
@@ -85,6 +95,7 @@ const App = () => {
     }
   };
 
+  // WebSocket connection management
   useEffect(() => {
     connectWebSocket(handleBallDrawn, handleGameEnded);
 
@@ -95,15 +106,31 @@ const App = () => {
 
   return (
       <div>
-        <h1>Bingo en Línea</h1>
-        <GameControls startGame={startGame} endGame={endGame} />
-        <BingoBoard card={card} />
-        <button onClick={validateBingo}>Validar Bingo</button>
-        <Notifications notifications={notifications} />
+        {!player ? (
+            // Login Component
+            <Login setPlayer={setPlayer} />
+        ) : !gameId ? (
+            // Lobby Component
+            <Lobby gameId={gameId} player={player} joinGame={joinGame} />
+        ) : (
+            // Game UI
+            <>
+              <h1>Bingo en Línea</h1>
+              <GameControls startGame={startGame} />
+              <button onClick={joinGame} disabled={!gameId}>
+                Unirse al Juego
+              </button>
+              <BingoBoard card={card} />
+              <button onClick={validateBingo}>Validar Bingo</button>
+              <Notifications notifications={notifications} />
+            </>
+        )}
       </div>
   );
 };
 
 export default App;
+
+
 
 
